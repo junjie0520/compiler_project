@@ -1,4 +1,5 @@
 package impl.symbol;
+
 import impl.type.Type;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,23 +11,35 @@ public final class FunctionSymbol extends Scope implements Symbol {
     private final String name;
     private final Type returnType;
     private final List<VariableSymbol> parameters = new ArrayList<>();
+
     public FunctionSymbol(String name, Type returnType, Scope parent) {
-        super(parent); this.name = name; this.returnType = returnType;
+        super(parent);
+        this.name = name;
+        this.returnType = returnType;
     }
-    @Override public String getName() { return name; }
-    @Override public Type getType() { return returnType; }
+
+    @Override
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public Type getType() {
+        return returnType;
+    }
+
     public List<VariableSymbol> getParameters() {
         return Collections.unmodifiableList(parameters);
     }
-    // TODO: insert a parameter into THIS function scope, then append it to
-    // the ordered parameter list. Duplicate parameter => false.
+
+    // 形参同时登记到本函数作用域与有序参数列表，两处保存同一对象。
+    // 若当前函数作用域中已有同名普通符号，返回 false 且不改变任何内容。
     public boolean addParameter(VariableSymbol parameter) {
-        if(parameters.contains(parameter)){
+        if (resolveLocal(parameter.getName()) != null) {
             return false;
         }
-        else{
-            parameters.add(parameter);
-            return true;
-        }
+        define(parameter);
+        parameters.add(parameter);
+        return true;
     }
 }
