@@ -24,6 +24,10 @@ public final class FunctionSymbol extends Scope implements Symbol {
 
     // TODO: define in this function scope, then append to the ordered list.
     public boolean addParameter(VariableSymbol parameter) {
-        throw new UnsupportedOperationException("TODO: FunctionSymbol.addParameter");
+        boolean defined = super.define(parameter);
+        if (defined) {
+            parameters.add(parameter);
+        }
+        return defined;
     }
 }

@@ -1,0 +1,26 @@
+[33mcommit 2d44bc85a53dff1718cb2a0d2cc71558818d0e28[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mproject4[m[33m)[m
+Author: junjie0520 <2622099802@qq.com>
+Date:   Fri Nov 13 08:39:20 2026 -0500
+
+    part A
+
+bin/Main.class
+bin/framework/project4/Diagnostic$Kind.class
+bin/framework/project4/Diagnostic.class
+bin/framework/project4/ErrorReporter.class
+bin/framework/project4/Grader.class
+bin/impl/SemanticAnalyzer.class
+bin/impl/symbol/FunctionSymbol.class
+bin/impl/symbol/GlobalScope.class
+bin/impl/symbol/Scope.class
+bin/impl/symbol/Symbol.class
+bin/impl/symbol/VariableSymbol.class
+bin/impl/type/ArrayType.class
+bin/impl/type/PrimitiveType.class
+bin/impl/type/StructType.class
+bin/impl/type/Type.class
+src/main/java/impl/SemanticAnalyzer.java
+src/main/java/impl/symbol/FunctionSymbol.java
+src/main/java/impl/symbol/GlobalScope.java
+src/main/java/impl/symbol/Scope.java
+src/main/java/impl/type/StructType.java

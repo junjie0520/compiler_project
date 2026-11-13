@@ -15,11 +15,17 @@ public final class GlobalScope extends Scope {
 
     // TODO: register a completed struct type; reject a duplicate name.
     public boolean defineStruct(StructType type) {
-        throw new UnsupportedOperationException("TODO: GlobalScope.defineStruct");
+        String structName = type.getName();
+        if (structTypes.get(structName) != null) {
+            return false; // 全局已存在同名结构体，拒绝注册
+        }
+        structTypes.put(structName, type);
+        return true;
     }
 
     // TODO: search only the global struct-type table.
     public StructType resolveStruct(String name) {
-        throw new UnsupportedOperationException("TODO: GlobalScope.resolveStruct");
+        StructType found = structTypes.get(name);
+        return found;
     }
 }
