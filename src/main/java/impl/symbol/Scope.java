@@ -26,8 +26,7 @@ public class Scope {
 
     // TODO: look up only in this scope.
     public Symbol resolveLocal(String name) {
-        Symbol found = symbols.get(name);
-        return found;
+        return symbols.get(name); // 字段名按实际替换，如 table / members
     }
 
     // TODO: search this scope, then parent scopes.

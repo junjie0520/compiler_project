@@ -7,6 +7,7 @@ import impl.symbol.*;
 import impl.type.*;
 import org.antlr.v4.runtime.Token;
 
+import java.util.ArrayList;
 import java.util.List;
 
 // Project 3 name-resolution implementation, extended with Project 4 type checking.
@@ -74,7 +75,9 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
             if (!(t2 instanceof ArrayType arr2)) {
                 return false;
             }
-            return isSameType(arr1.getElementType(), arr2.getElementType());
+            // 数组：元素类型相同且长度相同
+            return arr1.getLength() == arr2.getLength()
+                    && isSameType(arr1.getElementType(), arr2.getElementType());
         }
 
         if (t1 instanceof StructType) {
@@ -88,16 +91,61 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
         return t == PrimitiveType.INT;
     }
 
-    @Override
+        @Override
     public Type visitStructDef(Splc.StructDefContext ctx) {
         // Project 3: build members in declaration order; register only a
         // complete, internally valid StructType.
+        String name = ctx.Identifier().getSymbol().getText();
+        List<VariableSymbol> members = new ArrayList<>();
+        boolean allValid = true;
+
+        // structDef : STRUCT Identifier LBRACE fieldDef+ RBRACE SEMI
+        for (Splc.FieldDefContext field : ctx.fieldDef()) {
+            Splc.VariableDeclContext memberDecl = field.variableDecl();
+            Token memberToken = memberDecl.Identifier().getSymbol();
+            Type memberType = resolveDeclaredType(memberDecl);
+            if (memberType == null) {
+                allValid = false;
+                continue;
+            }
+            boolean duplicated = false;
+            for (VariableSymbol existing : members) {
+                if (existing.getName().equals(memberToken.getText())) {
+                    reporter.duplicateMember(memberToken);
+                    duplicated = true;
+                    allValid = false;
+                    break;
+                }
+            }
+            if (!duplicated) {
+                members.add(new VariableSymbol(memberToken.getText(), memberType));
+            }
+        }
+
+        // 仅在全部成员合法时调用 defineStruct
+        if (allValid) {
+            StructType structType = new StructType(name);
+            for (VariableSymbol m : members) {
+                structType.defineMember(m); // 若实际方法名为 addMember/putMember，请替换
+            }
+            globalScope.defineStruct(structType);
+        }
         return null;
     }
 
     @Override
     public Type visitGlobalVarDef(Splc.GlobalVarDefContext ctx) {
         // Project 3: resolve the declared type and define the global variable.
+        Token nameToken = ctx.variableDecl().Identifier().getSymbol();
+        Type declaredType = resolveDeclaredType(ctx.variableDecl());
+        if (declaredType == null) {
+            return null;
+        }
+        if (globalScope.resolve(nameToken.getText()) != null) {
+            reporter.redefinedSymbol(nameToken);
+        } else {
+            globalScope.define(new VariableSymbol(nameToken.getText(), declaredType));
+        }
         return null;
     }
 
@@ -105,12 +153,58 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
     public Type visitFunctionDef(Splc.FunctionDefContext ctx) {
         // Project 3: register the function before its body (direct recursion).
         // Use FunctionSymbol as the function scope; the outermost body shares it.
+        Token nameToken = ctx.Identifier().getSymbol();
+        Type returnType = resolveType(ctx.type());
+        // FunctionSymbol(String, Type, Scope)：第三个参数为父作用域
+        FunctionSymbol function = new FunctionSymbol(nameToken.getText(), returnType, currentScope);
+
+        if (globalScope.resolve(nameToken.getText()) != null) {
+            reporter.redefinedSymbol(nameToken);
+        } else {
+            globalScope.define(function);
+        }
+
+        Scope savedScope = currentScope;
+        currentScope = function;
+        try {
+            // 依次处理形参：functionDef -> parameterList? -> parameter -> variableDecl
+            if (ctx.parameterList() != null) {
+                for (Splc.ParameterContext param : ctx.parameterList().parameter()) {
+                    Splc.VariableDeclContext paramDecl = param.variableDecl();
+                    Token paramToken = paramDecl.Identifier().getSymbol();
+                    Type paramType = resolveDeclaredType(paramDecl);
+                    VariableSymbol paramSym = new VariableSymbol(paramToken.getText(), paramType);
+
+                    // 只查当前函数作用域，避免与外层同名误报（shadowing 合法）
+                    if (function.resolveLocal(paramToken.getText()) != null) {
+                        reporter.redefinedSymbol(paramToken);
+                    } else if (!function.addParameter(paramSym)) {
+                        // addParameter 内部 define 失败（理论上不会走到，因已判重）
+                        reporter.redefinedSymbol(paramToken);
+                    }
+                }
+            }
+            // 函数体是 block：最外层不新建作用域，直接遍历其 statement
+            for (Splc.StatementContext stmt : ctx.block().statement()) {
+                visit(stmt);
+            }
+        } finally {
+            currentScope = savedScope;
+        }
         return null;
     }
 
     @Override
     public Type visitBlock(Splc.BlockContext ctx) {
         // Project 3: nested blocks create a child scope and restore it on exit.
+        enterScope();
+        try {
+            for (Splc.StatementContext stmt : ctx.statement()) {
+                visit(stmt);
+            }
+        } finally {
+            exitScope();
+        }
         return null;
     }
 
@@ -118,18 +212,24 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
     public Type visitLocalVarDef(Splc.LocalVarDefContext ctx) {
         // Project 3: define the variable before visiting its initializer.
         // Project 4: check initializer compatibility; array initialization is not supported.
-        Type left = resolveDeclaredType(ctx.variableDecl());
-        
+        Token nameToken = ctx.variableDecl().Identifier().getSymbol();
+        Type declaredType = resolveDeclaredType(ctx.variableDecl());
 
+        if (declaredType != null) {
+            if (currentScope.resolveLocal(nameToken.getText()) != null) {
+                reporter.redefinedSymbol(nameToken);
+            } else {
+                currentScope.define(new VariableSymbol(nameToken.getText(), declaredType));
+            }
+        }
 
         if(ctx.expression()!=null){
             Type right = visitExpression(ctx.expression());
-            if(!isSameType(left, right)){
+            if(!isSameType(declaredType, right)){
                 Token assignToken = ctx.ASSIGN().getSymbol();
                 reporter.typeMismatch(assignToken);
             }
-            if (left instanceof ArrayType) {
-                Token nameToken = ctx.variableDecl().Identifier().getSymbol();
+            if (declaredType instanceof ArrayType) {
                 reporter.arrayInitializerNotSupported(nameToken);
             }
         }
@@ -249,6 +349,8 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
             String varName = ctx.Identifier().getText();
             Symbol resolved = currentScope.resolve(varName);
             if (resolved == null) {
+                // A：修正——未解析时必须报告 undeclaredIdentifier
+                reporter.undeclaredIdentifier(ctx.Identifier().getSymbol());
                 return null;
             }
             if (resolved instanceof VariableSymbol varSym) {
@@ -311,24 +413,31 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
     }
 
     // 辅助：括号表达式
+    // A：增加 Identifier()==null 条件，避免把 f(x) 误判为括号表达式
     private boolean isParenthesized(Splc.ExpressionContext ctx) {
-        return ctx.LPAREN() != null && ctx.RPAREN() != null;
+        return ctx.LPAREN() != null && ctx.RPAREN() != null && ctx.Identifier() == null;
     }
 
     // 辅助：是否一元运算符
+    // A：改用表达式数量判断，避免把 a - b 误判为一元；补一元 +
     private boolean isUnaryOpCtx(Splc.ExpressionContext ctx) {
-        return ctx.MINUS() != null || ctx.NOT() != null;
+        return ctx.expression().size() == 1
+                && (ctx.MINUS() != null || ctx.PLUS() != null || ctx.NOT() != null);
     }
 
     // 辅助：取一元运算符 Token
     private Token unaryOpToken(Splc.ExpressionContext ctx) {
-        return ctx.MINUS() != null ? ctx.MINUS().getSymbol() : ctx.NOT().getSymbol();
+        if (ctx.MINUS() != null) return ctx.MINUS().getSymbol();
+        if (ctx.PLUS() != null) return ctx.PLUS().getSymbol();
+        return ctx.NOT().getSymbol();
     }
 
     // 辅助：判断是否二元运算符（把长 if 抽出来，降低相似度）
+    // A：补 MOD 与 POW
     private boolean isBinaryOpCtx(Splc.ExpressionContext ctx) {
         return ctx.PLUS() != null || ctx.MINUS() != null || ctx.MUL() != null
-                || ctx.DIV() != null || ctx.EQ() != null || ctx.NEQ() != null
+                || ctx.DIV() != null || ctx.MOD() != null || ctx.POW() != null
+                || ctx.EQ() != null || ctx.NEQ() != null
                 || ctx.LT() != null || ctx.GT() != null || ctx.LE() != null
                 || ctx.GE() != null || ctx.AND() != null || ctx.OR() != null;
     }
