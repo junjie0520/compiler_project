@@ -1,1 +1,6 @@
 *.class
+*.jar
+/target/classes/generated/
+/src/main/java/generated/
+/bin/generated/
+/.vscode/

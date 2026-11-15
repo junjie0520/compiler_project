@@ -1,0 +1,99 @@
+Project 4 三人分工方案
+根据项目文档，五个需要提交的文件中，StructType.java、FunctionSymbol.java、Scope.java、GlobalScope.java 是 Project 3 已有的基础设施（只需沿用/小幅调整），核心工作量集中在 SemanticAnalyzer.java。因此建议按"功能模块"而非"文件"来切分，三人共享同一个 SemanticAnalyzer.java（可用 Git 分支/分段编辑，最后合并）。
+
+总体切分原则
+成员	负责模块	对应章节
+A	基础设施维护 + 表达式类型检查（基本/一元/二元）	第4节、5.1–5.3
+B	复合表达式（数组/成员访问/函数调用）+ 赋值检查	5.4–5.6、第6节
+C	语句类型检查 + 诊断集成 + 测试与提交	第7、8、9节
+成员 A：基础与简单表达式
+文件职责
+
+维护 StructType.java、FunctionSymbol.java、Scope.java、GlobalScope.java（检查 Project 3 的 prettyPrint()、getType()、getParameters() 等 API 是否满足 P4 需要，必要时补私有辅助方法）
+
+SemanticAnalyzer.java 中：
+
+搭建 Visitor 骨架，保留 P3 的声明处理、作用域管理、名称解析逻辑
+
+类型相等判断（4.2 节）：int / 数组递归 / 结构体同一对象，建议写 isSameType(Type, Type) 私有方法供全组使用
+
+错误表达式约定（4.3 节）：定义"类型未知"的表示方式（如返回 null），全组统一
+
+5.1 基本表达式：整数常量、普通名称（NOT_VARIABLE）、括号
+
+5.2 一元运算（BAD_UNARY_OPERAND，定位运算符 Token）
+
+5.3 二元运算（BAD_BINARY_OPERAND，定位运算符 Token）
+
+交付物
+
+isSameType() 工具方法 + 类型未知约定（最先完成，供 B/C 依赖）
+
+基本/一元/二元表达式的 visit 方法
+
+依赖关系：A 的 isSameType 和"类型未知"约定是 B、C 的前置依赖，应第一天完成并同步给全组。
+
+成员 B：复合表达式与赋值
+文件职责（均在 SemanticAnalyzer.java）
+
+5.4 数组访问：EXPECTED_ARRAY（定位 [）、BAD_INDEX_TYPE（定位 [），结果类型为元素类型
+
+5.5 结构体成员访问：EXPECTED_STRUCT（定位 .）、UNKNOWN_MEMBER（定位成员名），支持连续/与数组组合访问
+
+5.6 函数调用：NOT_FUNCTION（定位标识符）、BAD_ARGUMENT_COUNT（定位函数名）、BAD_ARGUMENT_TYPE（定位实参起始 Token）；注意数量不匹配时仍检查各实参表达式、数组不退化的完整类型比较
+
+第6节 赋值检查：
+
+合法赋值目标判定（从变量出发经括号/数组/成员访问，最终非数组）——建议写 isAssignableTarget() 辅助方法
+
+INVALID_ASSIGNMENT_TARGET（定位 =），左侧非法时不再报 TYPE_MISMATCH
+
+TYPE_MISMATCH（定位 =），结构体整体赋值合法、数组成员不可整体赋值
+
+交付物
+
+数组/成员访问、函数调用的 visit 方法
+
+赋值表达式的 visit 方法 + isAssignableTarget() 辅助方法
+
+依赖：使用 A 的 isSameType 与类型未知约定。
+
+成员 C：语句检查、诊断集成与测试
+文件职责
+
+第7节 语句类型检查：
+
+7.1 局部变量初始化：TYPE_MISMATCH（定位 =）、ARRAY_INITIALIZER_NOT_SUPPORTED（定位变量名）
+
+7.2 return 语句：TYPE_MISMATCH（定位 return），需维护当前函数返回类型
+
+7.3 if/while 条件：BAD_CONDITION_TYPE（定位 if/while 关键字）
+
+7.4 表达式语句：仅检查表达式本身
+
+第8节 诊断集成：核对每个错误定位的 Token 是否与表格一致（尤其 [、.、=、return、关键字等易错点），检查错误传播（不重复报告）
+
+第9节 正确程序输出：核对 OK + 结构体/全局符号摘要格式
+
+测试与提交：make build / make run / make test，跑公开用例，最后 make handin 生成 target/project4-handin.zip
+
+交付物
+
+语句相关 visit 方法 + 当前函数返回类型维护
+
+全项目诊断 Token 定位审查表
+
+测试通过记录 + 提交压缩包
+
+依赖：语句检查依赖 A/B 的表达式类型推导结果；C 可在 A/B 接口稳定后并行开发语句部分，同时提前准备测试环境。
+
+协作与时间建议
+第 1 天：A 先交付 isSameType() + 类型未知约定 + Visitor 骨架，全组对齐接口（表达式 visit 统一返回 Type，未知返回 null）。
+
+第 2–4 天：A（基本/一元/二元）、B（数组/成员/调用/赋值）、C（语句）并行开发；C 同步搭建测试脚本。
+
+第 5 天：合并 SemanticAnalyzer.java，C 主导跑 make test 与诊断定位审查，全组修复。
+
+截止前：C 执行 make handin，确认压缩包含五个 Java 文件且目录结构正确，由一位同学提交。
+
+关键风险：三人共改 SemanticAnalyzer.java 易冲突。建议用 Git 分支按"方法块"切分（如 A 改 visitUnary/Binary、B 改 visitArrayAccess/MemberAccess/Call/Assign、C 改 visitIf/While/Return/VarDecl），合并时只保留各自方法块，公共辅助方法（isSameType、isAssignableTarget）由 A/B 分别提供并统一命名。

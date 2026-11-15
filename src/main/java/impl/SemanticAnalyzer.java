@@ -118,24 +118,64 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
     public Type visitLocalVarDef(Splc.LocalVarDefContext ctx) {
         // Project 3: define the variable before visiting its initializer.
         // Project 4: check initializer compatibility; array initialization is not supported.
+        Type left = resolveDeclaredType(ctx.variableDecl());
+        
+
+
+        if(ctx.expression()!=null){
+            Type right = visitExpression(ctx.expression());
+            if(!isSameType(left, right)){
+                Token assignToken = ctx.ASSIGN().getSymbol();
+                reporter.typeMismatch(assignToken);
+            }
+            if (left instanceof ArrayType) {
+                Token nameToken = ctx.variableDecl().Identifier().getSymbol();
+                reporter.arrayInitializerNotSupported(nameToken);
+            }
+        }
+        return null;
+    }
+
+    private Type getFunctionReturnType() {
+        for (Scope scope = currentScope; scope != null; scope = scope.getParent()) {
+            if (scope instanceof FunctionSymbol function) {
+                return function.getType();
+            }
+        }
         return null;
     }
 
     @Override
     public Type visitReturnStatement(Splc.ReturnStatementContext ctx) {
         // TODO: check the expression against the current function return type.
+        Type actualType = visitExpression(ctx.expression());
+        Type expectedType = getFunctionReturnType();
+        if(!isSameType(actualType, expectedType)){
+            Token rToken = ctx.RETURN().getSymbol();
+            reporter.typeMismatch(rToken);
+        }
         return null;
     }
 
     @Override
     public Type visitIfStatement(Splc.IfStatementContext ctx) {
-        // TODO: check the condition type; visit both blocks.
+        Type conditionType = visitExpression(ctx.expression());
+        if (conditionType != null && !isInt(conditionType)) {
+            reporter.badConditionType(ctx.IF().getSymbol());
+        }
+        for (Splc.BlockContext block : ctx.block()) {
+            visit(block);
+        }
         return null;
     }
 
     @Override
     public Type visitWhileStatement(Splc.WhileStatementContext ctx) {
-        // TODO: check the condition type; visit the loop block.
+        Type conditionType = visitExpression(ctx.expression());
+        if (conditionType != null && !isInt(conditionType)) {
+            reporter.badConditionType(ctx.WHILE().getSymbol());
+        }
+        visit(ctx.block());
         return null;
     }
 
