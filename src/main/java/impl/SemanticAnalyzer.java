@@ -324,6 +324,41 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
             return arrayType.getElementType();
         }
 
+        // ===== 函数调用 =====
+        if (ctx.Identifier() != null && ctx.LPAREN() != null) {
+            Token functionToken = ctx.Identifier().getSymbol();
+            Symbol symbol = currentScope.resolve(functionToken.getText());
+            List<Splc.ExpressionContext> arguments = ctx.argumentList() == null
+                    ? List.of()
+                    : ctx.argumentList().expression();
+            List<Type> argumentTypes = new ArrayList<>(arguments.size());
+            for (Splc.ExpressionContext argument : arguments) {
+                argumentTypes.add(visitExpression(argument));
+            }
+
+            if (symbol == null) {
+                reporter.undeclaredIdentifier(functionToken);
+                return null;
+            }
+            if (!(symbol instanceof FunctionSymbol function)) {
+                reporter.notFunction(functionToken);
+                return null;
+            }
+
+            List<VariableSymbol> parameters = function.getParameters();
+            if (arguments.size() != parameters.size()) {
+                reporter.badArgumentCount(functionToken);
+            }
+            int comparableCount = Math.min(arguments.size(), parameters.size());
+            for (int i = 0; i < comparableCount; i++) {
+                Type actualType = argumentTypes.get(i);
+                if (actualType != null && !isSameType(actualType, parameters.get(i).getType())) {
+                    reporter.badArgumentType(arguments.get(i).getStart());
+                }
+            }
+            return function.getType();
+        }
+
         // ===== B：赋值 expression ASSIGN expression =====
         // 结果类型等于左侧左值类型，支持 a = b = c 的右结合链
         if (ctx.ASSIGN() != null) {
