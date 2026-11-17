@@ -95,9 +95,14 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
     public Type visitStructDef(Splc.StructDefContext ctx) {
         // Project 3: build members in declaration order; register only a
         // complete, internally valid StructType.
-        String name = ctx.Identifier().getSymbol().getText();
+        Token nameToken = ctx.Identifier().getSymbol();
+        String name = nameToken.getText();
         List<VariableSymbol> members = new ArrayList<>();
         boolean allValid = true;
+        if (globalScope.resolveStruct(name) != null) {
+            reporter.redefinedStruct(nameToken);
+            allValid = false;
+        }
 
         // structDef : STRUCT Identifier LBRACE fieldDef+ RBRACE SEMI
         for (Splc.FieldDefContext field : ctx.fieldDef()) {
@@ -293,7 +298,7 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
                 return null; // 类型未知：静默传播，避免级联报错
             }
             if (!(baseType instanceof StructType structType)) {
-                reporter.expectedStruct(ctx.expression(0).getStart());
+                reporter.expectedStruct(ctx.DOT().getSymbol());
                 return null;
             }
             VariableSymbol member = structType.resolveMember(memberToken.getText());
@@ -348,12 +353,13 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
             List<VariableSymbol> parameters = function.getParameters();
             if (arguments.size() != parameters.size()) {
                 reporter.badArgumentCount(functionToken);
-            }
-            int comparableCount = Math.min(arguments.size(), parameters.size());
-            for (int i = 0; i < comparableCount; i++) {
-                Type actualType = argumentTypes.get(i);
-                if (actualType != null && !isSameType(actualType, parameters.get(i).getType())) {
-                    reporter.badArgumentType(arguments.get(i).getStart());
+            } else {
+                for (int i = 0; i < arguments.size(); i++) {
+                    Type actualType = argumentTypes.get(i);
+                    if (actualType != null
+                            && !isSameType(actualType, parameters.get(i).getType())) {
+                        reporter.badArgumentType(arguments.get(i).getStart());
+                    }
                 }
             }
             return function.getType();
@@ -367,7 +373,7 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
             Type lhsType = visitExpression(lhs);
             Type rhsType = visitExpression(ctx.expression(1));
 
-            if (!isAssignable(lhs)) {
+            if (!isAssignable(lhs) || lhsType instanceof ArrayType) {
                 reporter.invalidAssignmentTarget(assignToken);
             } else if (lhsType != null && rhsType != null && !isSameType(lhsType, rhsType)) {
                 reporter.typeMismatch(assignToken);
@@ -433,6 +439,9 @@ public final class SemanticAnalyzer extends SplcBaseVisitor<Type> {
 
     // 辅助：合法赋值目标（变量 / 数组元素 / 结构体成员，递归检查基底）
     private boolean isAssignable(Splc.ExpressionContext expr) {
+        if (isParenthesized(expr)) {
+            return isAssignable(expr.expression(0));
+        }
         if (expr.DOT() != null) {
             return isAssignable(expr.expression(0));
         }
